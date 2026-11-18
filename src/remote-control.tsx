@@ -19,6 +19,7 @@ import { getVolumeState, setMute, setVolume, VolumeState } from "./volume";
 type Button = {
   id: string;
   title: string;
+  label?: string; // shorter text for the grid cell
   icon: Icon;
   key?: string; // remote key sent on press
   special?: "type" | "power";
@@ -26,7 +27,8 @@ type Button = {
   tint?: Color;
 };
 
-// 3 columns, laid out like a physical remote.
+// 5 columns × 3 rows so the whole remote fits without scrolling: the d-pad sits in the middle,
+// playback above it, volume on its sides.
 const BUTTONS: Button[] = [
   {
     id: "back",
@@ -35,9 +37,25 @@ const BUTTONS: Button[] = [
     key: "KEY_RETURN",
     shortcut: { modifiers: ["cmd"], key: "backspace" },
   },
+  { id: "play", title: "Play", icon: Icon.Play, key: "KEY_PLAY", shortcut: { modifiers: ["cmd"], key: "p" } },
   { id: "up", title: "Up", icon: Icon.ArrowUp, key: "KEY_UP", shortcut: { modifiers: ["cmd"], key: "arrowUp" } },
+  {
+    id: "pause",
+    title: "Pause",
+    icon: Icon.Pause,
+    key: "KEY_PAUSE",
+    shortcut: { modifiers: ["cmd", "shift"], key: "p" },
+  },
   { id: "home", title: "Home", icon: Icon.House, key: "KEY_HOME", shortcut: { modifiers: ["cmd", "shift"], key: "h" } },
 
+  {
+    id: "voldown",
+    title: "Volume Down",
+    label: "Vol −",
+    icon: Icon.SpeakerDown,
+    key: "KEY_VOLDOWN",
+    shortcut: { modifiers: ["cmd"], key: "-" },
+  },
   {
     id: "left",
     title: "Left",
@@ -53,30 +71,16 @@ const BUTTONS: Button[] = [
     key: "KEY_RIGHT",
     shortcut: { modifiers: ["cmd"], key: "arrowRight" },
   },
-
-  { id: "play", title: "Play", icon: Icon.Play, key: "KEY_PLAY", shortcut: { modifiers: ["cmd"], key: "p" } },
   {
-    id: "down",
-    title: "Down",
-    icon: Icon.ArrowDown,
-    key: "KEY_DOWN",
-    shortcut: { modifiers: ["cmd"], key: "arrowDown" },
-  },
-  {
-    id: "pause",
-    title: "Pause",
-    icon: Icon.Pause,
-    key: "KEY_PAUSE",
-    shortcut: { modifiers: ["cmd", "shift"], key: "p" },
+    id: "volup",
+    title: "Volume Up",
+    label: "Vol +",
+    icon: Icon.SpeakerUp,
+    key: "KEY_VOLUP",
+    shortcut: { modifiers: ["cmd"], key: "=" },
   },
 
-  {
-    id: "voldown",
-    title: "Volume Down",
-    icon: Icon.SpeakerDown,
-    key: "KEY_VOLDOWN",
-    shortcut: { modifiers: ["cmd"], key: "-" },
-  },
+  { id: "type", title: "Type…", icon: Icon.Keyboard, special: "type", shortcut: { modifiers: ["cmd"], key: "t" } },
   {
     id: "mute",
     title: "Mute",
@@ -85,14 +89,12 @@ const BUTTONS: Button[] = [
     shortcut: { modifiers: ["cmd", "shift"], key: "m" },
   },
   {
-    id: "volup",
-    title: "Volume Up",
-    icon: Icon.SpeakerUp,
-    key: "KEY_VOLUP",
-    shortcut: { modifiers: ["cmd"], key: "=" },
+    id: "down",
+    title: "Down",
+    icon: Icon.ArrowDown,
+    key: "KEY_DOWN",
+    shortcut: { modifiers: ["cmd"], key: "arrowDown" },
   },
-
-  { id: "type", title: "Type…", icon: Icon.Keyboard, special: "type", shortcut: { modifiers: ["cmd"], key: "t" } },
   {
     id: "source",
     title: "Source",
@@ -256,8 +258,9 @@ export default function Command() {
 
   return (
     <Grid
-      columns={3}
-      inset={Grid.Inset.Large}
+      columns={5}
+      aspectRatio="16/9"
+      inset={Grid.Inset.Medium}
       isLoading={status === "connecting"}
       navigationTitle={`Remote — ${statusText}${tvKeyboardOpen ? " · TV keyboard open (⌘T)" : ""}`}
       searchBarPlaceholder={`${statusText} — ⌘ + arrows to navigate, ⌘↩ OK, ⌘T type`}
@@ -265,8 +268,7 @@ export default function Command() {
       {BUTTONS.map((b) => (
         <Grid.Item
           key={b.id}
-          title={b.title}
-          subtitle={b.shortcut ? shortcutLabel(b.shortcut) : undefined}
+          title={b.shortcut ? `${b.label ?? b.title}   ${shortcutLabel(b.shortcut)}` : (b.label ?? b.title)}
           content={{
             source: b.icon,
             tintColor:
