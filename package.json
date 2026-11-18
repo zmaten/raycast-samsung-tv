@@ -54,6 +54,28 @@
       "mode": "view"
     },
     {
+      "name": "remote-control",
+      "title": "TV Remote",
+      "subtitle": "Samsung TV",
+      "description": "Arrow keys, OK, back, volume and typing on the TV, with keyboard shortcuts.",
+      "mode": "view"
+    },
+    {
+      "name": "play-youtube",
+      "title": "Play YouTube on TV",
+      "subtitle": "Samsung TV",
+      "description": "Play the YouTube video from your browser or clipboard on the TV.",
+      "mode": "no-view",
+      "arguments": [
+        {
+          "name": "url",
+          "type": "text",
+          "placeholder": "YouTube link (optional)",
+          "required": false
+        }
+      ]
+    },
+    {
       "name": "select-tv",
       "title": "Select TV",
       "subtitle": "Samsung TV",

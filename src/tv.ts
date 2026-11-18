@@ -1,8 +1,8 @@
 import { getPreferenceValues, LocalStorage } from "@raycast/api";
 import dgram from "node:dgram";
 import net from "node:net";
-import WebSocket from "ws";
 import { DiscoveredTv, discoverTvs, identify } from "./discovery";
+import { withRemote } from "./remote";
 
 type Prefs = { ip?: string; mac?: string; token?: string };
 
@@ -10,7 +10,6 @@ type Prefs = { ip?: string; mac?: string; token?: string };
 export type Tv = { ip: string; id?: string; name?: string; mac?: string; model?: string };
 
 const TV_KEY = "tv";
-const CLIENT_NAME = Buffer.from("Raycast").toString("base64");
 
 const prefs = () => getPreferenceValues<Prefs>();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -204,93 +203,11 @@ export async function turnOff(waitSeconds = 25): Promise<boolean> {
   return false;
 }
 
-// ---------------------------------------------------------------- remote keys (wss:8002)
+// ---------------------------------------------------------------- remote keys
 
-const tokenKey = async () => `token:${(await storedTv())?.id ?? "default"}`;
-
-async function loadToken(): Promise<string | undefined> {
-  const fromPrefs = prefs().token?.trim();
-  if (fromPrefs) return fromPrefs;
-  const key = await tokenKey();
-  const token = await LocalStorage.getItem<string>(key);
-  if (token) return token;
-  // versions before multi-TV support stored a single token under "tv-token"
-  const legacy = await LocalStorage.getItem<string>("tv-token");
-  if (legacy) {
-    await LocalStorage.setItem(key, legacy);
-    await LocalStorage.removeItem("tv-token");
-  }
-  return legacy;
-}
-
-/**
- * Opens the authenticated remote-control channel. Without a token the TV shows an
- * "Allow" prompt on screen; the token it returns is saved for next time.
- */
-async function openRemote(): Promise<WebSocket> {
-  const ip = await tvIp();
-  const token = await loadToken();
-  const key = await tokenKey();
-  const url =
-    `wss://${ip}:8002/api/v2/channels/samsung.remote.control?name=${CLIENT_NAME}` + (token ? `&token=${token}` : "");
-  // The TV uses a self-signed certificate on the local network.
-  const ws = new WebSocket(url, { rejectUnauthorized: false, handshakeTimeout: 6000 });
-
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => {
-        ws.terminate();
-        reject(new Error(token ? "TV did not respond" : "Select Allow on the TV, then try again"));
-      },
-      token ? 8000 : 45000,
-    );
-    ws.on("message", async (raw) => {
-      let msg: { event?: string; data?: { token?: string } };
-      try {
-        msg = JSON.parse(raw.toString());
-      } catch {
-        return;
-      }
-      if (msg.event === "ms.channel.connect") {
-        clearTimeout(timer);
-        if (msg.data?.token && msg.data.token !== token) await LocalStorage.setItem(key, msg.data.token);
-        resolve(ws);
-      } else if (msg.event === "ms.channel.unauthorized") {
-        clearTimeout(timer);
-        ws.terminate();
-        reject(
-          new Error(
-            "The TV refused the connection — on the TV open Settings → General → External Device Manager → Device Connection Manager and allow Raycast",
-          ),
-        );
-      }
-    });
-    // Tizen sends malformed close frames; ws reports them as errors. Only fail before we're connected.
-    ws.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
-}
-
+/** One-shot key presses. Views that send many keys should hold a RemoteSession instead. */
 export async function sendKeys(keys: string[], delayMs = 400): Promise<void> {
-  const ws = await openRemote();
-  try {
-    for (const key of keys) {
-      ws.send(
-        JSON.stringify({
-          method: "ms.remote.control",
-          params: { Cmd: "Click", DataOfCmd: key, Option: "false", TypeOfRemote: "SendRemoteKey" },
-        }),
-      );
-      await sleep(delayMs);
-    }
-    await sleep(300);
-  } finally {
-    ws.removeAllListeners("error");
-    ws.on("error", () => undefined);
-    ws.terminate();
-  }
+  await withRemote((remote) => remote.keys(keys, delayMs));
 }
 
 // ---------------------------------------------------------------- apps (REST :8001)
