@@ -1,0 +1,106 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "samsung-tv",
+  "title": "Samsung TV",
+  "description": "Turn the Samsung TV on and off over Wi-Fi and switch between its apps.",
+  "icon": "extension-icon.png",
+  "author": "pavel_winkler",
+  "categories": [
+    "Media",
+    "Productivity"
+  ],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "turn-on",
+      "title": "Turn On TV",
+      "subtitle": "Samsung TV",
+      "description": "Wake the TV from standby with Wake-on-LAN.",
+      "mode": "no-view"
+    },
+    {
+      "name": "turn-off",
+      "title": "Turn Off TV",
+      "subtitle": "Samsung TV",
+      "description": "Put the TV into standby.",
+      "mode": "no-view"
+    },
+    {
+      "name": "toggle-power",
+      "title": "Toggle TV Power",
+      "subtitle": "Samsung TV",
+      "description": "Turn the TV on if it is off, or off if it is on.",
+      "mode": "no-view"
+    },
+    {
+      "name": "extend-display",
+      "title": "Extend Mac Display to TV",
+      "subtitle": "Samsung TV",
+      "description": "Turn the TV on and use it as an extended display over AirPlay.",
+      "mode": "no-view"
+    },
+    {
+      "name": "disconnect-display",
+      "title": "Disconnect TV Display",
+      "subtitle": "Samsung TV",
+      "description": "Stop using the TV as a display.",
+      "mode": "no-view"
+    },
+    {
+      "name": "open-app",
+      "title": "Open TV App",
+      "subtitle": "Samsung TV",
+      "description": "Switch between apps installed on the TV.",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "ip",
+      "title": "TV IP Address",
+      "description": "Local IP of the TV (Settings → General → Network → Network Status). Reserve it in your router so it doesn't change.",
+      "type": "textfield",
+      "required": true,
+      "placeholder": "192.168.1.50"
+    },
+    {
+      "name": "mac",
+      "title": "TV MAC Address",
+      "description": "Optional. Wi-Fi MAC for Wake-on-LAN. Learned from the TV automatically the first time it is on.",
+      "type": "textfield",
+      "required": false,
+      "placeholder": "Learned automatically"
+    },
+    {
+      "name": "airplayName",
+      "title": "AirPlay Name",
+      "description": "Optional. Name the TV shows under Screen Mirroring. Learned from the TV automatically.",
+      "type": "textfield",
+      "required": false,
+      "placeholder": "Learned automatically"
+    },
+    {
+      "name": "token",
+      "title": "Pairing Token",
+      "description": "Optional. Leave empty: the TV asks you to Allow the connection on first use and the token is saved.",
+      "type": "password",
+      "required": false
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^2.13.1",
+    "@raycast/utils": "^2.3.3",
+    "ws": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/ws": "^8.18.2",
+    "typescript": "^5.6.0"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop",
+    "lint": "ray lint"
+  }
+}
