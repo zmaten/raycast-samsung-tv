@@ -1,27 +1,86 @@
 import { getPreferenceValues, LocalStorage } from "@raycast/api";
 import dgram from "node:dgram";
-import fs from "node:fs";
 import net from "node:net";
-import os from "node:os";
-import path from "node:path";
 import WebSocket from "ws";
+import { DiscoveredTv, discoverTvs, identify } from "./discovery";
 
-type Prefs = { ip: string; mac?: string; token?: string };
+type Prefs = { ip?: string; mac?: string; token?: string };
 
-const TOKEN_KEY = "tv-token";
-const DEVICE_KEY = "tv-device"; // { mac, name } learned from the TV while it is on
-const LEGACY_TOKEN_FILE = path.join(os.homedir(), ".samsung_tv_token");
+/** The TV this extension controls. Learned by discovery, refreshed whenever the TV answers. */
+export type Tv = { ip: string; id?: string; name?: string; mac?: string; model?: string };
+
+const TV_KEY = "tv";
 const CLIENT_NAME = Buffer.from("Raycast").toString("base64");
 
-export const prefs = () => getPreferenceValues<Prefs>();
+const prefs = () => getPreferenceValues<Prefs>();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// ---------------------------------------------------------------- which TV
+
+export async function storedTv(): Promise<Tv | undefined> {
+  const raw = await LocalStorage.getItem<string>(TV_KEY);
+  return raw ? (JSON.parse(raw) as Tv) : undefined;
+}
+
+async function saveTv(tv: Tv) {
+  await LocalStorage.setItem(TV_KEY, JSON.stringify(tv));
+}
+
+/** Make a discovered TV the active one. Switching to another TV resets per-TV caches. */
+export async function selectTv(found: DiscoveredTv): Promise<void> {
+  const prev = await storedTv();
+  if (prev?.id && prev.id !== found.id) {
+    await LocalStorage.removeItem("seen-apps");
+  }
+  await saveTv({ ip: found.ip, id: found.id, name: found.name, mac: found.mac, model: found.model });
+}
+
+export class TvSelectionError extends Error {}
+
+/**
+ * IP of the TV to talk to: the preference if set, else the remembered TV, else discovery.
+ * One TV found is selected automatically; several require the Select TV command.
+ */
+export async function tvIp(): Promise<string> {
+  const override = prefs().ip?.trim();
+  if (override) return override;
+  const tv = await storedTv();
+  if (tv?.ip) return tv.ip;
+
+  const found = await discoverTvs();
+  if (found.length === 1) {
+    await selectTv(found[0]);
+    return found[0].ip;
+  }
+  if (found.length === 0)
+    throw new TvSelectionError("No Samsung TV found — switch it on and check it is on the same Wi-Fi");
+  throw new TvSelectionError(`Found ${found.length} TVs — choose one with the “Select TV” command`);
+}
+
+/**
+ * The TV may have a new IP after a DHCP renewal. Find it again by its device id or MAC.
+ * Returns the new IP, or undefined if it is not on the network (e.g. in deep standby).
+ */
+async function relocateTv(): Promise<string | undefined> {
+  if (prefs().ip?.trim()) return undefined; // fixed by the user
+  const tv = await storedTv();
+  if (!tv) return undefined;
+  const found = await discoverTvs({ scanFallback: true });
+  const match = found.find(
+    (f) => (tv.id && f.id === tv.id) || (tv.mac && f.mac?.toUpperCase() === tv.mac.toUpperCase()),
+  );
+  if (!match) return undefined;
+  await selectTv(match);
+  return match.ip;
+}
 
 // ---------------------------------------------------------------- state
 
 /** True when the TV's control port answers, i.e. it is on (or briefly still awake after power-off). */
-export function isReachable(timeoutMs = 700): Promise<boolean> {
+export async function isReachable(timeoutMs = 700): Promise<boolean> {
+  const ip = await tvIp();
   return new Promise((resolve) => {
-    const sock = net.connect({ host: prefs().ip, port: 8001 });
+    const sock = net.connect({ host: ip, port: 8001 });
     const done = (ok: boolean) => {
       sock.destroy();
       resolve(ok);
@@ -34,39 +93,38 @@ export function isReachable(timeoutMs = 700): Promise<boolean> {
 
 /** "on" | "standby" | "off". Standby means the network is still up for a few seconds after power-off. */
 export async function powerState(attempts = 2): Promise<"on" | "standby" | "off"> {
+  const ip = await tvIp();
   for (let i = 0; i < attempts; i++) {
-    try {
-      const res = await fetch(`http://${prefs().ip}:8001/api/v2/`, { signal: AbortSignal.timeout(2000) });
-      const json = (await res.json()) as { device?: { PowerState?: string; wifiMac?: string; name?: string } };
-      await rememberDevice(json.device);
-      return json.device?.PowerState === "on" ? "on" : "standby";
-    } catch {
-      // a busy TV can drop a single request; only call it off if the port is closed too
-      if (!(await isReachable())) return "off";
+    const info = await identify(ip, 2000);
+    if (info) {
+      await rememberDevice(info);
+      return info.powerState === "on" ? "on" : "standby";
     }
+    // a busy TV can drop a single request; only call it off if the port is closed too
+    if (!(await isReachable())) return "off";
   }
   return "standby";
 }
 
 // ---------------------------------------------------------------- device identity
 
-type DeviceInfo = { mac?: string; name?: string };
-
-async function rememberDevice(device?: { wifiMac?: string; name?: string }) {
-  if (!device?.wifiMac && !device?.name) return;
-  const next: DeviceInfo = { mac: device.wifiMac, name: device.name };
-  const prev = await LocalStorage.getItem<string>(DEVICE_KEY);
-  if (prev !== JSON.stringify(next)) await LocalStorage.setItem(DEVICE_KEY, JSON.stringify(next));
-}
-
-async function learnedDevice(): Promise<DeviceInfo> {
-  const raw = await LocalStorage.getItem<string>(DEVICE_KEY);
-  return raw ? (JSON.parse(raw) as DeviceInfo) : {};
+async function rememberDevice(info: DiscoveredTv) {
+  const prev = await storedTv();
+  if (prefs().ip?.trim() && prev && prev.ip !== info.ip) return; // don't overwrite a different selected TV
+  const next: Tv = {
+    ...prev,
+    ip: info.ip,
+    id: info.id,
+    name: info.name,
+    mac: info.mac ?? prev?.mac,
+    model: info.model,
+  };
+  if (JSON.stringify(prev) !== JSON.stringify(next)) await saveTv(next);
 }
 
 /** MAC for Wake-on-LAN: the preference if set, otherwise what the TV reported while it was on. */
 async function tvMac(): Promise<string> {
-  const mac = prefs().mac?.trim() || (await learnedDevice()).mac;
+  const mac = prefs().mac?.trim() || (await storedTv())?.mac;
   if (!mac)
     throw new Error("MAC address unknown — turn the TV on once with its remote, or set it in the extension settings");
   return mac;
@@ -74,7 +132,7 @@ async function tvMac(): Promise<string> {
 
 /** The TV's name as AirPlay shows it ("[TV] Living Room" → "Living Room"). */
 export async function tvAirPlayName(): Promise<string | undefined> {
-  const name = (await learnedDevice()).name;
+  const name = (await storedTv())?.name;
   return name?.replace(/^\[TV\]\s*/, "").trim() || undefined;
 }
 
@@ -84,7 +142,7 @@ export async function sendWakeOnLan(): Promise<void> {
   const mac = Buffer.from((await tvMac()).replace(/[:-]/g, ""), "hex");
   if (mac.length !== 6) throw new Error("Invalid MAC address in the extension settings");
   const packet = Buffer.concat([Buffer.alloc(6, 0xff), ...Array(16).fill(mac)]);
-  const subnetBroadcast = prefs().ip.replace(/\.\d+$/, ".255");
+  const subnetBroadcast = (await tvIp()).replace(/\.\d+$/, ".255");
 
   return new Promise((resolve, reject) => {
     const sock = dgram.createSocket("udp4");
@@ -111,10 +169,16 @@ export async function turnOn(waitSeconds = 20): Promise<boolean> {
   // Just switched off: the network is still up for ~20 s and a remote key wakes it instantly.
   if (state === "standby") await sendKeys(["KEY_POWER"]).catch(() => undefined);
   await sendWakeOnLan();
+  let relocated = false;
   for (let i = 0; i < waitSeconds * 2; i++) {
     await sleep(500);
     if ((await powerState()) === "on") return true;
     if (i % 6 === 5) await sendWakeOnLan();
+    // woken but silent at the old address after ~10 s: it may have a new IP
+    if (i === 20 && !relocated) {
+      relocated = true;
+      if (await relocateTv()) return (await powerState()) === "on";
+    }
   }
   return false;
 }
@@ -142,16 +206,21 @@ export async function turnOff(waitSeconds = 25): Promise<boolean> {
 
 // ---------------------------------------------------------------- remote keys (wss:8002)
 
+const tokenKey = async () => `token:${(await storedTv())?.id ?? "default"}`;
+
 async function loadToken(): Promise<string | undefined> {
   const fromPrefs = prefs().token?.trim();
   if (fromPrefs) return fromPrefs;
-  const stored = await LocalStorage.getItem<string>(TOKEN_KEY);
-  if (stored) return stored;
-  try {
-    return fs.readFileSync(LEGACY_TOKEN_FILE, "utf8").trim() || undefined;
-  } catch {
-    return undefined;
+  const key = await tokenKey();
+  const token = await LocalStorage.getItem<string>(key);
+  if (token) return token;
+  // versions before multi-TV support stored a single token under "tv-token"
+  const legacy = await LocalStorage.getItem<string>("tv-token");
+  if (legacy) {
+    await LocalStorage.setItem(key, legacy);
+    await LocalStorage.removeItem("tv-token");
   }
+  return legacy;
 }
 
 /**
@@ -159,17 +228,19 @@ async function loadToken(): Promise<string | undefined> {
  * "Allow" prompt on screen; the token it returns is saved for next time.
  */
 async function openRemote(): Promise<WebSocket> {
+  const ip = await tvIp();
   const token = await loadToken();
+  const key = await tokenKey();
   const url =
-    `wss://${prefs().ip}:8002/api/v2/channels/samsung.remote.control?name=${CLIENT_NAME}` +
-    (token ? `&token=${token}` : "");
+    `wss://${ip}:8002/api/v2/channels/samsung.remote.control?name=${CLIENT_NAME}` + (token ? `&token=${token}` : "");
+  // The TV uses a self-signed certificate on the local network.
   const ws = new WebSocket(url, { rejectUnauthorized: false, handshakeTimeout: 6000 });
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
       () => {
         ws.terminate();
-        reject(new Error(token ? "TV did not respond" : "Approve the connection on the TV and try again"));
+        reject(new Error(token ? "TV did not respond" : "Select Allow on the TV, then try again"));
       },
       token ? 8000 : 45000,
     );
@@ -182,12 +253,16 @@ async function openRemote(): Promise<WebSocket> {
       }
       if (msg.event === "ms.channel.connect") {
         clearTimeout(timer);
-        if (msg.data?.token && msg.data.token !== token) await LocalStorage.setItem(TOKEN_KEY, msg.data.token);
+        if (msg.data?.token && msg.data.token !== token) await LocalStorage.setItem(key, msg.data.token);
         resolve(ws);
       } else if (msg.event === "ms.channel.unauthorized") {
         clearTimeout(timer);
         ws.terminate();
-        reject(new Error("TV denied access — allow it under Device Connection Manager"));
+        reject(
+          new Error(
+            "The TV refused the connection — on the TV open Settings → General → External Device Manager → Device Connection Manager and allow Raycast",
+          ),
+        );
       }
     });
     // Tizen sends malformed close frames; ws reports them as errors. Only fail before we're connected.
@@ -227,6 +302,7 @@ export type TvApp = { id: string; name: string; running: boolean; visible: boole
  * Several apps have different IDs per Tizen year; whichever answers is installed.
  * Source: community lists (homebridge-samsung-tizen, samsung-tv-ws-api).
  */
+// prettier-ignore
 export const KNOWN_APP_IDS: string[] = [
   // video
   "3201907018807", "11101200001", // Netflix
@@ -268,7 +344,7 @@ type Probe = { kind: "found"; app: TvApp } | { kind: "missing" } | { kind: "erro
 
 async function probeOnce(id: string): Promise<Probe> {
   try {
-    const res = await fetch(`http://${prefs().ip}:8001/api/v2/applications/${encodeURIComponent(id)}`, {
+    const res = await fetch(`http://${await tvIp()}:8001/api/v2/applications/${encodeURIComponent(id)}`, {
       signal: AbortSignal.timeout(4000),
     });
     if (res.status === 404) return { kind: "missing" };
@@ -335,7 +411,7 @@ export async function listInstalledApps(customIds: string[] = []): Promise<TvApp
 
 export async function launchApp(id: string): Promise<void> {
   if ((await powerState()) !== "on" && !(await turnOn())) throw new Error("TV did not wake up");
-  const res = await fetch(`http://${prefs().ip}:8001/api/v2/applications/${encodeURIComponent(id)}`, {
+  const res = await fetch(`http://${await tvIp()}:8001/api/v2/applications/${encodeURIComponent(id)}`, {
     method: "POST",
     signal: AbortSignal.timeout(6000),
   });
@@ -343,7 +419,7 @@ export async function launchApp(id: string): Promise<void> {
 }
 
 export async function closeApp(id: string): Promise<void> {
-  const res = await fetch(`http://${prefs().ip}:8001/api/v2/applications/${encodeURIComponent(id)}`, {
+  const res = await fetch(`http://${await tvIp()}:8001/api/v2/applications/${encodeURIComponent(id)}`, {
     method: "DELETE",
     signal: AbortSignal.timeout(6000),
   });

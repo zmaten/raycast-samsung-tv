@@ -2,9 +2,9 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "samsung-tv",
   "title": "Samsung TV",
-  "description": "Turn the Samsung TV on and off over Wi-Fi and switch between its apps.",
+  "description": "Control a Samsung Smart TV over Wi-Fi: power on and off, switch apps and inputs, and use the TV as an extended Mac display. Not affiliated with Samsung.",
   "icon": "extension-icon.png",
-  "author": "pavel_winkler",
+  "author": "zmaten",
   "categories": [
     "Media",
     "Productivity"
@@ -13,14 +13,14 @@
   "commands": [
     {
       "name": "turn-on",
-      "title": "Turn On TV",
+      "title": "Turn on TV",
       "subtitle": "Samsung TV",
       "description": "Wake the TV from standby with Wake-on-LAN.",
       "mode": "no-view"
     },
     {
       "name": "turn-off",
-      "title": "Turn Off TV",
+      "title": "Turn off TV",
       "subtitle": "Samsung TV",
       "description": "Put the TV into standby.",
       "mode": "no-view"
@@ -52,16 +52,23 @@
       "subtitle": "Samsung TV",
       "description": "Switch between apps installed on the TV.",
       "mode": "view"
+    },
+    {
+      "name": "select-tv",
+      "title": "Select TV",
+      "subtitle": "Samsung TV",
+      "description": "Find Samsung TVs on the network and choose which one to control.",
+      "mode": "view"
     }
   ],
   "preferences": [
     {
       "name": "ip",
       "title": "TV IP Address",
-      "description": "Local IP of the TV (Settings → General → Network → Network Status). Reserve it in your router so it doesn't change.",
+      "description": "Optional. The TV is found automatically; set this only if discovery does not work on your network.",
       "type": "textfield",
-      "required": true,
-      "placeholder": "192.168.1.50"
+      "required": false,
+      "placeholder": "Found automatically"
     },
     {
       "name": "mac",
@@ -93,14 +100,23 @@
     "ws": "^8.23.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.0.0",
+    "@raycast/eslint-config": "^2.2.0",
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.10",
     "@types/ws": "^8.18.2",
-    "typescript": "^5.6.0"
+    "eslint": "^9.22.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2"
   },
   "scripts": {
     "build": "ray build",
     "dev": "ray develop",
-    "lint": "ray lint"
-  }
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
+    "prepublishOnly": "echo \"\\n\\nIt seems like you are trying to publish the Raycast extension to npm.\\n\\nIf you did intend to publish it to npm, remove the \\`prepublishOnly\\` script and rerun \\`npm publish\\` again.\\nIf you wanted to publish it to the Raycast Store instead, use \\`npm run publish\\` instead.\\n\\n\" && exit 1",
+    "publish": "npx @raycast/api@latest publish"
+  },
+  "platforms": [
+    "macOS"
+  ]
 }

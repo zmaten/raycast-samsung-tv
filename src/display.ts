@@ -5,12 +5,7 @@ import { turnOn, tvAirPlayName } from "./tv";
 
 type Prefs = { airplayName?: string };
 type ScriptResult =
-  | "connected"
-  | "disconnected"
-  | "already-connected"
-  | "already-disconnected"
-  | "not-found"
-  | `error: ${string}`;
+  "connected" | "disconnected" | "already-connected" | "already-disconnected" | "not-found" | `error: ${string}`;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Resolved once per operation by loadName(): the preference, else the name the TV reported.

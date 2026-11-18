@@ -10,6 +10,7 @@ import {
   showToast,
   Toast,
   useNavigation,
+  Keyboard,
 } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { connectDisplay, disconnectDisplay, isDisplayConnected } from "./display";
@@ -78,13 +79,13 @@ export default function Command() {
   const powerActions = (
     <ActionPanel.Section title="Power">
       <Action
-        title="Turn TV On"
+        title="Turn TV on"
         icon={Icon.Power}
-        shortcut={{ modifiers: ["cmd", "shift"], key: "o" }}
+        shortcut={Keyboard.Shortcut.Common.OpenWith}
         onAction={() => run("Waking TV…", turnOn, "📺 TV is on").then(refresh)}
       />
       <Action
-        title="Turn TV Off"
+        title="Turn TV off"
         icon={Icon.Moon}
         shortcut={{ modifiers: ["cmd", "shift"], key: "x" }}
         onAction={() => run("Turning TV off…", turnOff, "💤 TV is off").then(refresh)}
@@ -107,13 +108,13 @@ export default function Command() {
       <Action
         title="Refresh"
         icon={Icon.ArrowClockwise}
-        shortcut={{ modifiers: ["cmd"], key: "r" }}
+        shortcut={Keyboard.Shortcut.Common.Refresh}
         onAction={refresh}
       />
       <Action.Push
         title="Add App by ID"
         icon={Icon.Plus}
-        shortcut={{ modifiers: ["cmd"], key: "n" }}
+        shortcut={Keyboard.Shortcut.Common.New}
         target={<AddAppForm onAdded={refresh} />}
       />
     </ActionPanel.Section>
@@ -137,7 +138,7 @@ export default function Command() {
             actions={
               <ActionPanel>
                 <Action
-                  title="Turn TV On"
+                  title="Turn TV on"
                   icon={Icon.Power}
                   onAction={() => run("Waking TV…", turnOn, "📺 TV is on").then(refresh)}
                 />
@@ -174,7 +175,9 @@ export default function Command() {
                     icon={Icon.XMarkCircle}
                     style={Action.Style.Destructive}
                     shortcut={{ modifiers: ["ctrl"], key: "x" }}
-                    onAction={() => run(`Closing ${app.name}…`, () => closeApp(app.id), `Closed ${app.name}`).then(refresh)}
+                    onAction={() =>
+                      run(`Closing ${app.name}…`, () => closeApp(app.id), `Closed ${app.name}`).then(refresh)
+                    }
                   />
                 )}
                 <Action.CopyToClipboard title="Copy App ID" content={app.id} />
