@@ -37,7 +37,8 @@ export async function identify(ip: string, timeoutMs = 2500): Promise<Discovered
       name: d.name || "Samsung TV",
       model: d.modelName,
       mac: d.wifiMac,
-      powerState: d.PowerState,
+      // 2019 and older TVs omit PowerState; their API only answers while the TV is on.
+      powerState: d.PowerState ?? "on",
     };
   } catch {
     return undefined;
